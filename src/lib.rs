@@ -21,6 +21,42 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 // index(row, column, universe) = row * width(universe) + column
 
+extern crate web_sys;
+use web_sys::console;
+
+
+pub struct Timer<'a> {
+    name: &'a str,
+}
+
+impl<'a> Timer<'a> {
+    pub fn new(name: &'a str) -> Timer<'a> {
+        console::time_with_label(name);
+        Timer { name }
+    }
+}
+
+impl<'a> Drop for Timer<'a> {
+    fn drop(&mut self) {
+        console::time_end_with_label(self.name);
+    }
+}
+
+// A macro to provide `println!(..)`-style syntax for `console.log` logging.
+macro_rules! log {
+    ( $( $t:tt )* ) => {
+        web_sys::console::log_1(&format!( $( $t )* ).into());
+    }
+}
+
+impl Cell {
+    fn toggle(&mut self) {
+        *self = match *self {
+            Cell::Dead => Cell::Alive,
+            Cell::Alive => Cell::Dead,
+        };
+    }
+}
 
 #[wasm_bindgen]
 #[repr(u8)]
@@ -40,13 +76,27 @@ pub struct Universe {
 #[wasm_bindgen]
 impl Universe {
     pub fn tick(&mut self) {
-        let mut next = self.cells.clone();
-
+        let _timer = Timer::new("Universe::tick");
+       
+       
+        let mut next = {
+            let _timer = Timer::new("allocate next cells");
+            self.cells.clone()
+        };
+        let _timer = Timer::new("new generation");
         for row in 0..self.height {
             for col in 0..self.width {
                 let idx = self.get_index(row, col);
                 let cell = self.cells[idx];
                 let live_neighbors = self.live_neighbor_count(row, col);
+
+                // log!(
+                //      "cell[{}, {}] is initially {:?} and has {} live neighbors",
+                //      row,
+                //      col,
+                //      cell,
+                //      live_neighbors
+                // );
 
                 let next_cell = match (cell, live_neighbors) {
                     // Rule 1: Any live cell with fewer than two live neighbours
@@ -65,10 +115,12 @@ impl Universe {
                     (otherwise, _) => otherwise,
                 };
 
+                // log!("it becomes {:?}", next_cell);
+
                 next[idx] = next_cell;
             }
         }
-
+        let _timer = Timer::new("free old cells");
         self.cells = next;
     }
 
@@ -93,8 +145,10 @@ impl Universe {
     }
 
     pub fn new() -> Universe {
-        let width = 64;
-        let height = 64;
+        utils::set_panic_hook();
+
+        let width = 128;
+        let height = 128;
 
         let cells = (0..width * height)
             .map(|i| {
@@ -142,6 +196,11 @@ impl Universe {
     pub fn set_height(&mut self, height: u32) {
         self.height = height;
         self.cells = (0..self.width * height).map(|_i| Cell::Dead).collect();
+    }
+
+    pub fn toggle_cell(&mut self, row: u32, column: u32) {
+        let idx = self.get_index(row, column);
+        self.cells[idx].toggle();
     }
 
 }
